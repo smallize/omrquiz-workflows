@@ -1,0 +1,161 @@
+name: auto-generate-content
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate_content:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+
+    steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Checkout theme repository
+      uses: actions/checkout@v4
+      with:
+        repository: smallize/omrquiz
+        path: omrquiz_repo
+        token: ${{ env.REPO_TOKEN }}
+        fetch-depth: 0
+        submodules: true
+        persist-credentials: true
+
+    - name: Install Required Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Detect Newly Added Files
+      id: detect_changes
+      run: |
+        git diff --name-status ${{ github.event.before }} ${{ github.event.after }} \
+          | grep '^A' | awk '{print $2}' | sort | uniq > added_files.txt
+
+        echo "Added files detected:"
+        cat added_files.txt
+
+    - name: Check for Added Files
+      run: |
+        if [ ! -s added_files.txt ]; then
+          echo "No added files detected. Exiting."
+          exit 0
+        fi
+
+    - name: Collect File Contents
+      id: collect_files
+      run: |
+        CONTENT=""
+        while IFS= read -r file; do
+          if [ -f "$file" ]; then
+            FILE_CONTENT=$(cat "$file")
+            CONTENT="${CONTENT}\n\n--- FILE: ${file} ---\n\n${FILE_CONTENT}"
+          else
+            echo "File $file not found"
+          fi
+        done < added_files.txt
+
+        echo -e "${CONTENT}" > collected_content.txt
+
+    - name: Provide Existing Features to AI
+      id: provide_existing_features
+      run: |
+        EXISTING_FEATURES=""
+
+        if [ -d "omrquiz_repo/content/products.omrquiz.com/en/" ]; then
+          FEATURES_PRODUCTS=$(find omrquiz_repo/content/products.omrquiz.com/en/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+          EXISTING_FEATURES="$EXISTING_FEATURES $FEATURES_PRODUCTS"
+        fi
+
+        if [ -d "omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/" ]; then
+          FEATURES_DOCS=$(find omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+          EXISTING_FEATURES="$EXISTING_FEATURES $FEATURES_DOCS"
+        fi
+
+        echo "Existing feature names: $EXISTING_FEATURES"
+
+        echo "${EXISTING_FEATURES}" > existing_features.txt
+
+    - name: Generate Feature Name via AI
+      id: generate_feature_name
+      run: |
+        COLLECTED_CONTENT=$(cat collected_content.txt)
+        EXISTING_FEATURES=$(cat existing_features.txt)
+
+        JSON_DATA=$(jq -n \
+          --arg model "gpt-3.5-turbo" \
+          --arg content "Given the following file content:\n\n$COLLECTED_CONTENT\n\nAnd the existing features:\n$EXISTING_FEATURES\n\nSuggest a concise, descriptive feature name for the newly added functionality." \
+          --arg max_tokens "50" \
+          '{model: $model, messages: [{role: "user", content: $content}], max_tokens: ($max_tokens|tonumber)}')
+
+        AI_RESPONSE=$(curl -s -X POST https://api.openai.com/v1/chat/completions \
+          -H "Authorization: Bearer $OPENAI_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$JSON_DATA")
+
+        FEATURE_NAME=$(echo "$AI_RESPONSE" | jq -r '.choices[0].message.content' | tr -d '\n' | sed 's/[^a-zA-Z0-9_-]//g')
+        echo "Generated feature name: $FEATURE_NAME"
+
+        echo "$FEATURE_NAME" > feature_name.txt
+
+    - name: Generate Consolidated Content
+      id: generate_content
+      run: |
+        COLLECTED_CONTENT=$(cat collected_content.txt)
+        FEATURE_NAME=$(cat feature_name.txt)
+
+#        mkdir -p omrquiz_repo/content/releases.omrquiz.com/en/release-notes/
+#        mkdir -p omrquiz_repo/content/products.omrquiz.com/en/html-converter/
+#        mkdir -p omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/sample-guide/
+
+#        TEMPLATE_RELEASE=$(cat omrquiz_repo/content/releases.omrquiz.com/en/release-notes/24.8.md)
+#        TEMPLATE_PRODUCT=$(cat omrquiz_repo/content/products.omrquiz.com/en/html-converter/_index.md)
+#        TEMPLATE_DOC=$(cat omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/sample-guide/_index.md)
+
+        JSON_DATA=$(jq -n \
+          --arg model "gpt-3.5-turbo" \
+          --arg content "Analyze the following file content:\n\n$COLLECTED_CONTENT\n\nBased on the suggested feature name \"$FEATURE_NAME\", generate:\n1. A release note using this template:\n$TEMPLATE_RELEASE\n2. A product page using this template:\n$TEMPLATE_PRODUCT\n3. A documentation page using this template:\n$TEMPLATE_DOC" \
+          --arg max_tokens "2048" \
+          '{model: $model, messages: [{role: "user", content: $content}], max_tokens: ($max_tokens|tonumber)}')
+
+        RESPONSE=$(curl -s -X POST https://api.openai.com/v1/chat/completions \
+          -H "Authorization: Bearer $OPENAI_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$JSON_DATA")
+
+        FULL_TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+
+        if [[ "$FULL_TEXT" == *"Release Notes:"* ]] && [[ "$FULL_TEXT" == *"Product Page:"* ]] && [[ "$FULL_TEXT" == *"Documentation Page:"* ]]; then
+          RELEASE_NOTES=$(echo "$FULL_TEXT" | sed -n '/Release Notes:/,/Product Page:/p' | sed '/Product Page:/d')
+          PRODUCT_PAGE=$(echo "$FULL_TEXT" | sed -n '/Product Page:/,/Documentation Page:/p' | sed '/Documentation Page:/d')
+          DOC_PAGE=$(echo "$FULL_TEXT" | sed -n '/Documentation Page:/,$p')
+        else
+          echo "API response does not contain expected sections. Exiting."
+          exit 1
+        fi
+
+#        mkdir -p omrquiz_repo/content/releases.omrquiz.com/en/release-notes/
+#        echo "$RELEASE_NOTES" > omrquiz_repo/content/releases.omrquiz.com/en/release-notes/24.11.md
+#
+#        mkdir -p omrquiz_repo/content/products.omrquiz.com/en/$FEATURE_NAME/
+#        echo "$PRODUCT_PAGE" > omrquiz_repo/content/products.omrquiz.com/en/$FEATURE_NAME/_index.md
+#
+#        mkdir -p omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/$FEATURE_NAME/
+#        echo "$DOC_PAGE" > omrquiz_repo/content/docs.omrquiz.com/en/developers-guide/$FEATURE_NAME/_index.md
+
+    - name: Commit Consolidated Content
+      run: |
+#        cd omrquiz_repo
+#        git config user.name "GitHub Actions"
+#        git config user.email "actions@github.com"
+#        git add content/releases.omrquiz.com/en/release-notes/24.11.md
+#        git add content/products.omrquiz.com/en/$FEATURE_NAME/_index.md
+#        git add content/docs.omrquiz.com/en/developers-guide/$FEATURE_NAME/_index.md
+#        git commit -m "Generated consolidated content for feature: $FEATURE_NAME"
+#        git push origin HEAD
