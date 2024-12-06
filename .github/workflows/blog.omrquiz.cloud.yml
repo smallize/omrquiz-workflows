@@ -29,7 +29,7 @@ jobs:
           if [ "${{ github.event.inputs.environment }}" = "production" ]; then
             echo "::set-output name=url::https://blogs.omrquiz.cloud"
           else
-            echo "::set-output name=url::https://blogs.qa.omrquiz.cloud"
+            echo "::set-output name=url::https://blogs-qa.omrquiz.cloud"
           fi
       - name: Build
         run: hugo --config "configs/blog.omrquiz.cloud.toml","configs/common.omrquiz.cloud.toml" -b "${{ steps.base-url.outputs.url }}" --cleanDestinationDir --minify --templateMetrics --templateMetricsHints --enableGitInfo

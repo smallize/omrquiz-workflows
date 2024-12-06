@@ -29,12 +29,12 @@ jobs:
           if [ "${{ github.event.inputs.environment }}" = "production" ]; then
             echo "::set-output name=url::https://blogs.omrquiz.ai"
           else
-            echo "::set-output name=url::https://blogs.qa.omrquiz.ai"
+            echo "::set-output name=url::https://blogs-qa.omrquiz.ai"
           fi
       - name: Build
         run: hugo --config "configs/blogs.omrquiz.ai.toml","configs/common.omrquiz.ai.toml" -b "${{ steps.base-url.outputs.url }}" --cleanDestinationDir --minify --templateMetrics --templateMetricsHints --enableGitInfo
       - name: Deploy
         run: hugo deploy --config "configs/blogs.omrquiz.ai.toml" --maxDeletes=-1 --target "${{ github.event.inputs.environment }}" --invalidateCDN --force
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_ACCESS }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY_AI }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_ACCESS_AI }}
