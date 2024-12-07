@@ -10,6 +10,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
     - name: Checkout theme repo
       uses: actions/checkout@v4
