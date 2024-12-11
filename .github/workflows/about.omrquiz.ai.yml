@@ -1,0 +1,33 @@
+name: about.omrquiz.ai
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout theme repo
+        uses: actions/checkout@v4
+        with:
+          repository: smallize/omrquiz
+          token: ${{ secrets.REPO_TOKEN }}
+          fetch-depth: 0
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v2
+        with:
+          hugo-version: '0.135.0'
+          extended: true
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Install autoprefixer
+        run: npm install -D --save autoprefixer
+      - name: Install postcss-cli
+        run: npm install -D --save postcss-cli
+      - name: Build
+        run: hugo --config "configs/about.omrquiz.ai.toml","configs/common.omrquiz.ai.toml" -b "https://about.omrquiz.ai" --cleanDestinationDir --minify --templateMetrics --templateMetricsHints --enableGitInfo
+      - name: Deploy
+        run: hugo deploy --config "configs/about.omrquiz.ai.toml" --maxDeletes=-1 --target "production" --invalidateCDN --force
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_ACCESS }}
