@@ -3,15 +3,14 @@ on:
   workflow_dispatch:
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Checkout theme repo
       uses: actions/checkout@v4
       with:
           repository: smallize/omrquiz
           token: ${{ secrets.REPO_TOKEN }}
-          fetch-depth: 0 
-          submodules: true
+          fetch-depth: 0
     - name: Setup Hugo
       uses: peaceiris/actions-hugo@v2
       with:
