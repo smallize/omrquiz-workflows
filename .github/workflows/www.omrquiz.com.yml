@@ -13,13 +13,8 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout theme repo
+    - name: Checkout repo
       uses: actions/checkout@v4
-      with:
-          repository: smallize/omrquiz
-          token: ${{ secrets.REPO_TOKEN }}
-          fetch-depth: 0 
-          submodules: false
     - name: Setup Hugo
       uses: peaceiris/actions-hugo@v2
       with:
