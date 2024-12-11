@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout theme repo
+    - name: Checkout repo
       uses: actions/checkout@v4
       with:
           repository: smallize/omrquiz
